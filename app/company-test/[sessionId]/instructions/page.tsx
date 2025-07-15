@@ -29,7 +29,7 @@ interface TestSession {
   id: string
   name: string
   test_name: string
-  duration_minutes: number
+  duration: number
   description?: string
   company_name?: string
   instructions?: string
@@ -48,16 +48,18 @@ export default function InstructionsPage({ params }: { params: { sessionId: stri
 
   useEffect(() => {
     const fetchTestSession = async () => {
+      if (!sessionId) return
+
       try {
-        const response = await fetch(`/api/company-test/${sessionId}`)
+        const response = await fetch(`/api/test-sessions/${sessionId}`)
         if (!response.ok) {
           throw new Error("Failed to fetch test session")
         }
         const data = await response.json()
-        setTestSession(data.testSession)
-      } catch (error) {
-        console.error("Error fetching test session:", error)
-        setError("Failed to load test information. Please try again.")
+        setTestSession(data)
+      } catch (err) {
+        console.error("Error fetching test session:", err)
+        setError("Failed to load test details. Please try again later.")
       } finally {
         setIsLoading(false)
       }
@@ -76,7 +78,7 @@ export default function InstructionsPage({ params }: { params: { sessionId: stri
       testSessionId: sessionId,
       testName: testSession?.test_name || "Assessment",
       companyName: testSession?.company_name || "Company",
-      duration: testSession?.duration_minutes || 60,
+      duration: testSession?.duration || 60,
       startTime: new Date().toISOString(),
       proctorSettings: {
         requireCamera: true,
@@ -157,7 +159,7 @@ export default function InstructionsPage({ params }: { params: { sessionId: stri
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="text-center p-4 bg-purple-50 rounded-lg">
                     <Clock className="h-8 w-8 text-purple-600 mx-auto mb-2" />
-                    <p className="font-semibold text-gray-900">{testSession?.duration_minutes || 60} Minutes</p>
+                    <p className="font-semibold text-gray-900">{testSession?.duration} Minutes</p>
                     <p className="text-sm text-gray-600">Total Duration</p>
                   </div>
                   <div className="text-center p-4 bg-blue-50 rounded-lg">
@@ -392,7 +394,7 @@ export default function InstructionsPage({ params }: { params: { sessionId: stri
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Duration</span>
-                    <Badge className="bg-purple-100 text-purple-700">{testSession?.duration_minutes || 60} min</Badge>
+                    <Badge className="bg-purple-100 text-purple-700">{testSession?.duration} min</Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">Type</span>
