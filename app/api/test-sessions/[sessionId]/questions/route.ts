@@ -6,7 +6,8 @@ export async function GET(
   { params }: { params: { sessionId: string } }
 ) {
   try {
-    const { sessionId } = params
+    // Await the params object before destructuring
+    const { sessionId } = await params
 
     // Verify the test session exists and is active
     const sessionCheck = await query(
@@ -42,21 +43,42 @@ export async function GET(
     // Format questions with proper options parsing
     const questions = questionsResult.rows.map((question) => {
       let parsedOptions = []
-
-      // Handle JSONB options field
-      if (question.options) {
+      
+      console.log('Processing question:', question.id, 'Type:', question.question_type);
+      console.log('Raw options:', question.options);
+      console.log('Options type:', typeof question.options);
+      
+      // Handle JSONB options field for multiple choice questions
+      if ((question.question_type === 'multiple_choice' || question.question_type === 'mcq') && question.options) {
         try {
           if (typeof question.options === "string") {
-            parsedOptions = JSON.parse(question.options)
+            // Try to parse as JSON string
+            console.log('Parsing options as string');
+            parsedOptions = JSON.parse(question.options);
+            console.log('Parsed string options:', parsedOptions);
           } else if (Array.isArray(question.options)) {
-            parsedOptions = question.options
+            // If it's already an array, use it directly
+            console.log('Using options as array directly');
+            parsedOptions = question.options;
           } else if (typeof question.options === "object") {
-            // If it's already a parsed object, convert to array
-            parsedOptions = Object.values(question.options)
+            // If it's an object, convert to array of {id, text} objects
+            console.log('Converting object options to array');
+            parsedOptions = Object.entries(question.options).map(([key, value]) => ({
+              id: key,
+              text: value
+            }));
+          }
+          
+          // Ensure parsedOptions is an array
+          if (!Array.isArray(parsedOptions)) {
+            console.warn("Parsed options is not an array:", parsedOptions);
+            parsedOptions = [];
+          } else {
+            console.log('Final parsed options:', parsedOptions);
           }
         } catch (error) {
-          console.error("Error parsing options for question:", question.id, error)
-          parsedOptions = []
+          console.error("Error parsing options for question:", question.id, error, question.options);
+          parsedOptions = [];
         }
       }
 
@@ -90,11 +112,12 @@ export async function GET(
         }
       }
 
+      // Ensure options are properly set in the return object
       return {
         id: question.id,
         question_text: question.question_text,
         question_type: question.question_type,
-        options: parsedOptions,
+        options: parsedOptions.length > 0 ? parsedOptions : question.options || [],
         order_num: question.order_num,
         points: question.points || 1,
         template_code: question.template_code || "",

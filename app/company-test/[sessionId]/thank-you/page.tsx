@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -23,6 +23,9 @@ interface TestSessionData {
 }
 
 export default function CompanyTestThankYouPage({ params }: { params: { sessionId: string } }) {
+  // Unwrap params using React.use()
+  const unwrappedParams = React.use(Promise.resolve(params));
+  const sessionId = unwrappedParams.sessionId;
   const searchParams = useSearchParams()
   const router = useRouter()
   const [testSession, setTestSession] = useState<TestSessionData | null>(null)
@@ -52,7 +55,7 @@ export default function CompanyTestThankYouPage({ params }: { params: { sessionI
         if (storedData) {
           const parsedData = JSON.parse(storedData);
           // Check if this is the correct test session
-          if (parsedData.testSessionId === params.sessionId) {
+          if (parsedData.testSessionId === sessionId) {
             setTestSession(parsedData);
             
             // Calculate time spent
@@ -80,14 +83,14 @@ export default function CompanyTestThankYouPage({ params }: { params: { sessionI
     };
     
     loadTestData();
-  }, [params.sessionId, score, status, questionsCompleted]);
+  }, [sessionId, score, status, questionsCompleted]);
   
   // Redirect to login if no test session data is found
   useEffect(() => {
     if (!loading && !testSession) {
-      router.push(`/company-test/${params.sessionId}/login`);
+      router.push(`/company-test/${sessionId}/login`);
     }
-  }, [loading, testSession, router, params.sessionId]);
+  }, [loading, testSession, router, sessionId]);
 
   const handleSubmitFeedback = async () => {
     if (!feedback.trim() || !testSession?.email) return;
@@ -96,13 +99,13 @@ export default function CompanyTestThankYouPage({ params }: { params: { sessionI
 
     try {
       // Submit feedback to database
-      await fetch(`/api/test-sessions/${params.sessionId}/feedback`, {
+      await fetch(`/api/test-sessions/${sessionId}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           email: testSession.email, 
           feedback,
-          testSessionId: params.sessionId
+          testSessionId: sessionId
         })
       });
       
@@ -135,7 +138,7 @@ export default function CompanyTestThankYouPage({ params }: { params: { sessionI
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <Link href={`/company-test/${params.sessionId}/login`}>Return to Login</Link>
+              <Link href={`/company-test/${sessionId}/login`}>Return to Login</Link>
             </Button>
           </CardContent>
         </Card>

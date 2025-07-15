@@ -163,11 +163,19 @@ import Webcam from "react-webcam"
 import * as faceapi from "face-api.js"
 import screenfull from "screenfull"
 
+interface QuestionOption {
+  id?: string | number;
+  text?: string;
+  option?: string;
+  answer?: string;
+  [key: string]: any;
+}
+
 interface Question {
   id: string
   question_text: string
-  question_type: "multiple_choice" | "coding"
-  options?: string[]
+  question_type: "multiple_choice" | "mcq" | "coding"
+  options?: (string | QuestionOption)[]
   order_num: number
   points?: number
   language?: string
@@ -211,6 +219,13 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
   const [testSession, setTestSession] = useState<TestSessionInfo | null>(null)
   const [testStarted, setTestStarted] = useState(false)
 
+  // Tab switch and audio warning states
+  const [tabSwitchWarnings, setTabSwitchWarnings] = useState<number>(0)
+  const [audioWarnings, setAudioWarnings] = useState<number>(0)
+  const [showTabWarning, setShowTabWarning] = useState<boolean>(false)
+  const [showAudioWarning, setShowAudioWarning] = useState<boolean>(false)
+  const [warningTimeout, setWarningTimeout] = useState<NodeJS.Timeout | null>(null)
+
   // Proctoring state management
   const [isCameraOn, setIsCameraOn] = useState(false)
   const [isMicOn, setIsMicOn] = useState(false)
@@ -231,7 +246,7 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
   const audioStreamRef = useRef<MediaStream | null>(null)
   const screenStreamRef = useRef<MediaStream | null>(null)
 
-  // Disable right-click and keyboard shortcuts
+  // Disable right-click and keyboard shortcuts, detect tab switches
   useEffect(() => {
     const disableRightClick = (e: MouseEvent) => {
       e.preventDefault()
@@ -257,12 +272,48 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
       e.preventDefault()
       return false
     }
+    
+    // Handle tab visibility change
+    const handleVisibilityChange = () => {
+      if (document.hidden && testStarted) {
+        // User switched tabs
+        setTabSwitchWarnings(prev => {
+          const newCount = prev + 1;
+          setShowTabWarning(true);
+          
+          // Clear any existing timeout
+          if (warningTimeout) {
+            clearTimeout(warningTimeout);
+          }
+          
+          // Set a new timeout to hide the warning after 5 seconds
+          const timeout = setTimeout(() => {
+            setShowTabWarning(false);
+          }, 5000);
+          
+          setWarningTimeout(timeout);
+          
+          // Add to violations
+          if (!proctoringViolations.includes("tab_switch")) {
+            setProctoringViolations([...proctoringViolations, "tab_switch"]);
+          }
+          
+          // If multiple warnings, close the test
+          if (newCount >= 3) {
+            handleSubmitTest();
+          }
+          
+          return newCount;
+        });
+      }
+    };
 
     if (testStarted) {
       document.addEventListener("contextmenu", disableRightClick)
       document.addEventListener("keydown", disableKeyboardShortcuts)
       document.addEventListener("selectstart", disableSelection)
       document.addEventListener("dragstart", disableSelection)
+      document.addEventListener("visibilitychange", handleVisibilityChange)
     }
 
     return () => {
@@ -270,8 +321,14 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
       document.removeEventListener("keydown", disableKeyboardShortcuts)
       document.removeEventListener("selectstart", disableSelection)
       document.removeEventListener("dragstart", disableSelection)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      
+      // Clear any existing timeout
+      if (warningTimeout) {
+        clearTimeout(warningTimeout);
+      }
     }
-  }, [testStarted])
+  }, [testStarted, proctoringViolations, warningTimeout])
 
   // Initialize face-api models
   useEffect(() => {
@@ -492,19 +549,23 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
       }
 
       const result = await response.json()
-
-      localStorage.setItem(
-        "testResults",
-        JSON.stringify({
-          score: result.score,
-          totalQuestions: questions.length,
-          passed: result.passed,
-          completedAt: new Date().toISOString(),
-        }),
+      
+      // Update test session data with results before redirecting
+      const updatedTestSession = {
+        ...testSession,
+        score: result.data.score,
+        status: result.data.status,
+        questionsCompleted: submissionAnswers.length,
+        completedAt: new Date().toISOString()
+      }
+      
+      // Save the updated test session data
+      localStorage.setItem("testSession", JSON.stringify(updatedTestSession))
+      
+      // Redirect to thank you page with query params
+      router.push(
+        `/company-test/${sessionId}/thank-you?email=${encodeURIComponent(email)}&score=${result.data.score}&status=${result.data.status}&questionsCompleted=${submissionAnswers.length}`
       )
-
-      localStorage.removeItem("testSession")
-      router.push(`/company-test/${sessionId}/thank-you`)
     } catch (error) {
       console.error("Error submitting test:", error)
       setError(error instanceof Error ? error.message : "Failed to submit test. Please try again.")
@@ -683,6 +744,14 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
       audioAnalyserRef.current = analyser
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount)
+      
+      // Audio detection threshold - lowered for better sensitivity
+      const AUDIO_THRESHOLD = 15;
+      // Counter for consecutive frames with high audio
+      let highAudioFrames = 0;
+      // Track average audio level over time for better detection
+      let audioLevelHistory: number[] = [];
+      const HISTORY_SIZE = 20;
 
       const checkAudioLevel = () => {
         if (!audioAnalyserRef.current) return
@@ -695,6 +764,70 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
 
         const avg = sum / dataArray.length
         setAudioLevel(avg)
+        
+        // Add current level to history
+        audioLevelHistory.push(avg);
+        if (audioLevelHistory.length > HISTORY_SIZE) {
+          audioLevelHistory.shift();
+        }
+        
+        // Calculate moving average
+        const movingAvg = audioLevelHistory.reduce((sum, val) => sum + val, 0) / audioLevelHistory.length;
+        
+        // Detect human voice/audio - using both threshold and pattern detection
+        // Human speech typically has variations in volume that we can detect
+        const hasVariation = audioLevelHistory.length >= 5 && 
+          Math.max(...audioLevelHistory.slice(-5)) - Math.min(...audioLevelHistory.slice(-5)) > 8;
+        
+        if ((avg > AUDIO_THRESHOLD && hasVariation) || avg > AUDIO_THRESHOLD * 2) {
+          highAudioFrames++;
+          
+          // If audio is consistently high for multiple frames (to avoid false positives)
+          // Reduced from 10 to 5 frames for better sensitivity
+          if (highAudioFrames > 5) {
+            setAudioWarnings(prev => {
+              const newCount = prev + 1;
+              
+              // Only trigger a new warning if not already showing
+              if (!showAudioWarning) {
+                setShowAudioWarning(true);
+                
+                // Clear any existing timeout
+                if (warningTimeout) {
+                  clearTimeout(warningTimeout);
+                }
+                
+                // Set a new timeout to hide the warning
+                const timeout = setTimeout(() => {
+                  setShowAudioWarning(false);
+                }, 5000);
+                
+                // Reset audio history to prevent immediate re-triggering
+                audioLevelHistory = [];
+                
+                setWarningTimeout(timeout);
+                
+                // Add to violations
+                if (!proctoringViolations.includes("human_audio_detected")) {
+                  setProctoringViolations([...proctoringViolations, "human_audio_detected"]);
+                }
+                
+                // If multiple warnings, close the test
+                if (newCount >= 3) {
+                  handleSubmitTest();
+                }
+              }
+              
+              return newCount;
+            });
+            
+            // Reset counter after triggering
+            highAudioFrames = 0;
+          }
+        } else {
+          // Reset counter if audio level drops
+          highAudioFrames = 0;
+        }
       }
 
       const audioInterval = setInterval(checkAudioLevel, 100)
@@ -1024,21 +1157,25 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
                   </h3>
 
                   {/* Multiple Choice Questions */}
-                  {currentQuestion?.question_type === "multiple_choice" && (
+                  {(currentQuestion?.question_type === "multiple_choice" || currentQuestion?.question_type === "mcq") && (
                     <div className="space-y-3">
                       {currentQuestion.options && currentQuestion.options.length > 0 ? (
                         currentQuestion.options.map((option, index) => {
-                          const isSelected = currentAnswer?.answer === option
+                          // Handle both string and object options
+                          const optionText = typeof option === 'object' ? option.text || option.option || option.answer || '' : option;
+                          const optionId = typeof option === 'object' ? option.id || index : index;
+                          const isSelected = currentAnswer?.answer === optionText;
+                          
                           return (
                             <Button
-                              key={index}
+                              key={optionId}
                               variant="outline"
                               className={`w-full justify-start text-left h-auto py-4 px-6 transition-all duration-200 ${
                                 isSelected
                                   ? "bg-purple-50 border-purple-300 text-purple-800 shadow-md"
                                   : "hover:bg-gray-50 hover:border-gray-300"
                               }`}
-                              onClick={() => handleAnswerChange(currentQuestionIndex, option)}
+                              onClick={() => handleAnswerChange(currentQuestionIndex, optionText || '')}
                             >
                               <div className="flex items-center w-full">
                                 <div
@@ -1052,11 +1189,11 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
                                   <span className="font-medium mr-3 text-gray-600">
                                     {String.fromCharCode(65 + index)}.
                                   </span>
-                                  <span className="text-gray-900">{option}</span>
+                                  <span className="text-gray-900">{optionText}</span>
                                 </div>
                               </div>
                             </Button>
-                          )
+                          );
                         })
                       ) : (
                         <div className="text-center py-8 text-gray-500">
@@ -1240,6 +1377,26 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
                       </div>
                     </div>
                   </>
+                )}
+                
+                {/* Tab Switch Warning */}
+                {showTabWarning && (
+                  <Alert className="bg-red-50 border-red-500 mt-2">
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    <AlertDescription className="text-red-800 text-xs">
+                      Tab switch detected! ({tabSwitchWarnings}/3)
+                    </AlertDescription>
+                  </Alert>
+                )}
+                
+                {/* Audio Warning */}
+                {showAudioWarning && (
+                  <Alert className="bg-red-50 border-red-500 mt-2">
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    <AlertDescription className="text-red-800 text-xs">
+                      Human voice detected! ({audioWarnings}/3)
+                    </AlertDescription>
+                  </Alert>
                 )}
 
                 {/* Face Warning */}

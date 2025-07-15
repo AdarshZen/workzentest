@@ -7,7 +7,8 @@ export async function POST(
 ) {
   try {
     // Get sessionId from URL params
-    const { sessionId } = params;
+    const resolvedParams = await Promise.resolve(params);
+    const sessionId = resolvedParams.sessionId;
     
     // Parse request body
     const { answers = [], completedAt, email } = await request.json();
@@ -149,15 +150,58 @@ export async function POST(
     const passingScore = sessionCheck.rows[0]?.passing_score || 70;
     const attemptStatus = percentageScore >= passingScore ? 'passed' : 'failed';
     
-    await query(
-      `INSERT INTO candidate_test_attempts
-       (candidate_id, test_session_id, score, status, started_at, completed_at)
-       VALUES ($1, $2, $3, $4, 
-         (SELECT start_time FROM candidates WHERE id = $1),
-         $5
-       )`,
-      [candidate.id, sessionId, percentageScore, attemptStatus, completedAt || new Date().toISOString()]
+    // Get the candidate's start_time
+    const startTimeResult = await query(
+      `SELECT start_time FROM candidates WHERE id = $1`,
+      [candidate.id]
     );
+    
+    // Use the start_time if available, otherwise use a default value
+    const startTime = startTimeResult.rows[0]?.start_time || completedAt || new Date().toISOString();
+    
+    // First check if this candidate has already submitted this test
+    const existingSubmissionCheck = await query(
+      `SELECT id FROM candidate_test_attempts 
+       WHERE candidate_id = $1 AND test_session_id = $2 LIMIT 1`,
+      [candidate.id, sessionId]
+    );
+    
+    if (existingSubmissionCheck?.rowCount && existingSubmissionCheck.rowCount > 0) {
+      // If a submission already exists, just update it instead of creating a new one
+      // This avoids the unique constraint violation
+      await query(
+        `UPDATE candidate_test_attempts
+         SET score = $1, 
+             status = $2, 
+             completed_at = $3, 
+             updated_at = CURRENT_TIMESTAMP
+         WHERE candidate_id = $4 AND test_session_id = $5`,
+        [percentageScore, attemptStatus, completedAt || new Date().toISOString(), candidate.id, sessionId]
+      );
+    } else {
+      // No existing submission, create a new one with attempt_number = 1
+      try {
+        await query(
+          `INSERT INTO candidate_test_attempts
+           (candidate_id, test_session_id, score, status, started_at, completed_at, attempt_number)
+           VALUES ($1, $2, $3, $4, $5, $6, 1)`,
+          [candidate.id, sessionId, percentageScore, attemptStatus, startTime, completedAt || new Date().toISOString()]
+        );
+      } catch (insertError) {
+        console.error('Error inserting test attempt:', insertError);
+        
+        // If insertion fails, try to update in case a record was created in the meantime
+        await query(
+          `UPDATE candidate_test_attempts
+           SET score = $1, 
+               status = $2, 
+               completed_at = $3, 
+               updated_at = CURRENT_TIMESTAMP
+           WHERE candidate_id = $4 AND test_session_id = $5`,
+          [percentageScore, attemptStatus, completedAt || new Date().toISOString(), candidate.id, sessionId]
+        );
+      }
+    }
 
     return NextResponse.json({
       success: true,

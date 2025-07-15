@@ -1,10 +1,16 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { FaceDetectionProvider } from './providers'
 
 export const metadata: Metadata = {
-  title: 'v0 App',
-  description: 'Created with v0',
-  generator: 'v0.dev',
+  title: 'Workzen',
+  description: 'Your productivity companion',
+  icons: {
+    icon: '/favicon-32.png',
+    apple: '/favicon-32.png',
+    shortcut: '/favicon-32.png',
+  },
+  generator: 'Workzen',
 }
 
 export default function RootLayout({
@@ -14,7 +20,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <FaceDetectionProvider>
+          {children}
+        </FaceDetectionProvider>
+      </body>
     </html>
   )
 }
