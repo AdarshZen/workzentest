@@ -11,7 +11,39 @@ const config: Config = {
     "*.{js,ts,jsx,tsx,mdx}"
   ],
   theme: {
-  	extend: {
+    extend: {
+      animation: {
+        'accordion-down': 'accordion-down 0.2s ease-out',
+        'accordion-up': 'accordion-up 0.2s ease-out',
+        'float': 'float 6s ease-in-out infinite',
+      },
+      keyframes: {
+        'accordion-down': {
+          from: {
+            height: '0'
+          },
+          to: {
+            height: 'var(--radix-accordion-content-height)'
+          }
+        },
+        'accordion-up': {
+          from: {
+            height: 'var(--radix-accordion-content-height)'
+          },
+          to: {
+            height: '0'
+          }
+        },
+        float: {
+          '0%, 100%': { transform: 'translateY(0) translateX(0)' },
+          '50%': { transform: 'translateY(-20px) translateX(10px)' },
+        },
+      },
+      animationDelay: {
+        '1000': '1000ms',
+        '2000': '2000ms',
+        '3000': '3000ms',
+      },
   		colors: {
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
@@ -64,33 +96,11 @@ const config: Config = {
   				ring: 'hsl(var(--sidebar-ring))'
   			}
   		},
-  		borderRadius: {
-  			lg: 'var(--radius)',
-  			md: 'calc(var(--radius) - 2px)',
-  			sm: 'calc(var(--radius) - 4px)'
-  		},
-  		keyframes: {
-  			'accordion-down': {
-  				from: {
-  					height: '0'
-  				},
-  				to: {
-  					height: 'var(--radix-accordion-content-height)'
-  				}
-  			},
-  			'accordion-up': {
-  				from: {
-  					height: 'var(--radix-accordion-content-height)'
-  				},
-  				to: {
-  					height: '0'
-  				}
-  			}
-  		},
-  		animation: {
-  			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
-  		}
+      borderRadius: {
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)'
+      }
   	}
   },
   plugins: [require("tailwindcss-animate")],
