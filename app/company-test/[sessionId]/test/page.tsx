@@ -254,10 +254,10 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
     }
 
     const disableKeyboardShortcuts = (e: KeyboardEvent) => {
-      // Disable F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U, Ctrl+S, etc.
+      // Disable F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+K, Ctrl+U, Ctrl+S, etc.
       if (
         e.key === "F12" ||
-        (e.ctrlKey && e.shiftKey && (e.key === "I" || e.key === "J" || e.key === "C")) ||
+        (e.ctrlKey && e.shiftKey && (e.key === "I" || e.key === "J" || e.key === "K")) ||
         (e.ctrlKey && (e.key === "u" || e.key === "U" || e.key === "s" || e.key === "S")) ||
         (e.ctrlKey && e.shiftKey && e.key === "Delete") ||
         e.key === "F5" ||
@@ -481,7 +481,6 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
     return () => clearInterval(timer)
   }, [testSession, testStarted])
 
-  // Handle answer changes
   const handleAnswerChange = (questionIndex: number, answer: string, code?: string) => {
     const question = questions[questionIndex]
     setAnswers((prev) => ({
@@ -1109,7 +1108,7 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
                       }`}
                       onClick={() => setCurrentQuestionIndex(index)}
                     >
-                      <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center w-full">
                         <span>Q{index + 1}</span>
                         {isAnswered && !isCurrent && <CheckCircle className="h-4 w-4" />}
                         {questions[index].question_type === "coding" && <Code className="h-4 w-4" />}
