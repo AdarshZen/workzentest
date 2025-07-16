@@ -171,12 +171,24 @@ export default function CompanyTestThankYouPage({ params }: { params: { sessionI
           {/* Success Message */}
           <Card className="border border-gray-200 rounded-xl shadow-sm bg-white mb-8">
             <CardContent className="p-8 text-center">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <CheckCircle className="w-10 h-10 text-green-600" />
+              <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <CheckCircle className="w-12 h-12 text-green-600" />
               </div>
 
-              <h1 className="text-3xl font-bold text-gray-900 mb-4">Assessment Completed!</h1>
-              <p className="text-lg text-gray-600 mb-6">Thank you for completing the {testSession.testName}</p>
+              {testResults?.score && testResults.score >= 70 ? (
+                <>
+                  <h1 className="text-4xl font-bold text-green-600 mb-4 text-center">Congratulations!</h1>
+                  <p className="text-2xl text-gray-800 font-medium mb-2 text-center">You've scored {testResults.score}% on your assessment.</p>
+                  <p className="text-lg text-gray-700 mb-6 text-center">Our team will be in touch with you shortly to schedule your interview rounds.</p>
+                </>
+              ) : (
+                <>
+                  <h1 className="text-4xl font-bold text-gray-800 mb-4 text-center">Thank You</h1>
+                  <p className="text-xl text-gray-700 mb-2 text-center">We appreciate your time and effort.</p>
+                  <p className="text-lg text-gray-600 mb-3 text-center">We're sorry, but we're unable to proceed with your application at this time.</p>
+                  <p className="text-lg text-gray-600 mb-6 text-center">Our team will review your application and may contact you for future opportunities that match your profile.</p>
+                </>
+              )}
 
               <div className="bg-purple-50 border border-purple-200 rounded-xl p-6 mb-6">
                 <h3 className="font-semibold text-gray-900 mb-4">Test Summary</h3>
@@ -205,18 +217,7 @@ export default function CompanyTestThankYouPage({ params }: { params: { sessionI
                 </div>
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                <div className="flex items-center space-x-2 text-blue-800">
-                  <Clock className="w-4 h-4" />
-                  <span className="font-medium">What happens next?</span>
-                </div>
-                <p className="text-blue-700 text-sm mt-2 text-left">
-                  • Your responses have been securely submitted to {testSession.companyName}
-                  <br />• Results will be reviewed by the hiring team
-                  <br />• You'll receive an email update within 3-5 business days
-                  <br />• Keep an eye on your inbox for next steps
-                </p>
-              </div>
+
             </CardContent>
           </Card>
 
@@ -285,8 +286,8 @@ export default function CompanyTestThankYouPage({ params }: { params: { sessionI
           <div className="text-center mt-8 text-gray-600">
             <p className="text-sm">
               Questions about your assessment? Contact{" "}
-              <a href="mailto:support@workzen.com" className="text-purple-600 hover:text-purple-700">
-                support@workzen.com
+              <a href="mailto:uday@workzen.cc" className="text-purple-600 hover:text-purple-700">
+                uday@workzen.cc
               </a>
             </p>
           </div>
