@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
-import { initFaceDetection } from "@/lib/face-detection";
+import { FaceDetector, createFaceDetector } from "@/lib/mediapipe-face-detection";
 
+// Initialize face detection when the app loads
+// This ensures proper initialization and prevents WebGL shader linking errors
 export function FaceDetectionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    // Initialize face detection when the app loads
-    // This prevents WebGL shader linking errors by ensuring proper initialization
-    initFaceDetection();
+    // The face detection is now initialized on-demand when the component mounts
+    // No need for explicit initialization here as it's handled by the FaceDetection component
+    return () => {
+      // Cleanup any resources if needed
+    };
   }, []);
 
   return <>{children}</>;

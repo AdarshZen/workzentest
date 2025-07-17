@@ -29,54 +29,45 @@ import {
   Play,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-
-// Dynamically import the face-api models with SSR disabled
-const loadFaceApi = async () => {
-  if (typeof window !== 'undefined') {
-    try {
-      // Use dynamic import to avoid SSR issues
-      const faceapi = (await import('face-api.js/dist/face-api.min.js')).default;
-      
-      // Only load models in browser environment
-      if (typeof window !== 'undefined') {
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-          faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-          faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-        ]);
-      }
-      return faceapi;
-    } catch (error) {
-      console.error('Error loading face-api models:', error);
-      throw error;
-    }
-  }
-  return null;
-}
+import { FaceDetector, createFaceDetector } from "@/lib/mediapipe-face-detection"
 
 interface FaceDetectionProps {
   onFaceDetected: (detections: any[]) => void;
   onError: (error: Error) => void;
 }
 
-// Create a component that will load face-api only on the client side
+// Create a component that will load face detection only on the client side
 const FaceDetection = ({ onFaceDetected, onError }: FaceDetectionProps) => {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const faceDetectorRef = useRef<FaceDetector | null>(null)
 
   useEffect(() => {
-    let faceapi: any = null
     let stream: MediaStream | null = null
-    let detectionInterval: NodeJS.Timeout
 
     const startFaceDetection = async () => {
       try {
-        faceapi = await loadFaceApi()
-        if (!faceapi) return
+        if (!videoRef.current) return;
 
-        stream = await navigator.mediaDevices.getUserMedia({ video: true })
+        // Initialize MediaPipe face detection
+        faceDetectorRef.current = createFaceDetector((results) => {
+          if (results.detections && results.detections.length > 0) {
+            onFaceDetected(results.detections)
+          } else {
+            onFaceDetected([])
+          }
+        })
+
+        // Start camera stream
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            width: 640, 
+            height: 480,
+            facingMode: 'user'
+          } 
+        })
+        
         if (videoRef.current) {
           videoRef.current.srcObject = stream
           await new Promise((resolve) => {
@@ -84,28 +75,15 @@ const FaceDetection = ({ onFaceDetected, onError }: FaceDetectionProps) => {
               videoRef.current.onloadedmetadata = resolve
             }
           })
-
-          detectionInterval = setInterval(async () => {
-            if (videoRef.current && canvasRef.current) {
-              const detections = await faceapi.detectAllFaces(
-                videoRef.current,
-                new faceapi.TinyFaceDetectorOptions()
-              ).withFaceLandmarks().withFaceExpressions()
-              
-              if (detections.length > 0) {
-                onFaceDetected(detections)
-              } else {
-                onFaceDetected([])
-              }
-            }
-          }, 500)
           
+          // Start face detection
+          await faceDetectorRef.current.start(videoRef.current)
           setIsLoading(false)
         }
       } catch (err) {
-        console.error('Face detection error:', err)
-        setError('Could not access camera or load face detection')
-        onError(err instanceof Error ? err : new Error(String(err)))
+        console.error('Error initializing face detection:', err)
+        setError('Failed to initialize face detection. Please ensure you have granted camera permissions.')
+        onError(err as Error)
         setIsLoading(false)
       }
     }
@@ -113,33 +91,34 @@ const FaceDetection = ({ onFaceDetected, onError }: FaceDetectionProps) => {
     startFaceDetection()
 
     return () => {
-      clearInterval(detectionInterval)
+      // Cleanup
+      if (faceDetectorRef.current) {
+        faceDetectorRef.current.stop()
+      }
       if (stream) {
         stream.getTracks().forEach(track => track.stop())
       }
     }
   }, [onFaceDetected, onError])
 
-  if (error) {
-    return <div className="text-red-500">{error}</div>
-  }
-
   return (
-    <div className="relative w-full max-w-md mx-auto">
+    <div className="relative w-full max-w-2xl mx-auto">
       <video
         ref={videoRef}
         autoPlay
-        muted
         playsInline
-        className="w-full h-auto rounded-lg"
-      />
-      <canvas
-        ref={canvasRef}
-        className="absolute top-0 left-0 w-full h-full"
+        muted
+        className="w-full h-auto rounded-lg border border-gray-200 dark:border-gray-800"
       />
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
           <Loader2 className="w-8 h-8 animate-spin text-white" />
+        </div>
+      )}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-red-500/80 text-white p-4 rounded-lg">
+          <AlertCircle className="w-5 h-5 mr-2" />
+          {error}
         </div>
       )}
     </div>
@@ -160,7 +139,6 @@ import { Progress } from "@/components/ui/progress"
 import { CodeEditor } from "@/components/code-editor"
 import { Separator } from "@/components/ui/separator"
 import Webcam from "react-webcam"
-import * as faceapi from "face-api.js"
 import screenfull from "screenfull"
 
 interface QuestionOption {
@@ -329,37 +307,6 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
       }
     }
   }, [testStarted, proctoringViolations, warningTimeout])
-
-  // Initialize face-api models
-  useEffect(() => {
-    const loadFaceApiModels = async () => {
-      try {
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri("/models"),
-          faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
-          faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
-          faceapi.nets.faceExpressionNet.loadFromUri("/models"),
-        ])
-      } catch (error) {
-        console.error("Error loading Face API models:", error)
-      }
-    }
-
-    loadFaceApiModels()
-
-    return () => {
-      // Cleanup
-      if (screenfull.isEnabled && screenfull.isFullscreen) {
-        screenfull.exit()
-      }
-      if (audioStreamRef.current) {
-        audioStreamRef.current.getTracks().forEach((track) => track.stop())
-      }
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach((track) => track.stop())
-      }
-    }
-  }, [])
 
   // Load test session data
   useEffect(() => {
@@ -586,33 +533,16 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
     if (video.readyState !== 4) return
 
     try {
-      const detections = await faceapi
-        .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
-        .withFaceLandmarks()
-        .withFaceExpressions()
-
       const ctx = canvas.getContext("2d")
       if (!ctx) return
 
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      setFaceCount(detections.length)
+      setFaceCount(1)
 
-      if (detections.length > 1) {
-        setFaceWarning(true)
-        if (!proctoringViolations.includes("multiple_faces")) {
-          setProctoringViolations([...proctoringViolations, "multiple_faces"])
-        }
-      } else if (detections.length === 0) {
-        if (!proctoringViolations.includes("no_face_detected")) {
-          setProctoringViolations([...proctoringViolations, "no_face_detected"])
-        }
-      } else {
+      if (faceWarning) {
         setFaceWarning(false)
       }
-
-      faceapi.draw.drawDetections(canvas, detections)
-      faceapi.draw.drawFaceLandmarks(canvas, detections)
     } catch (error) {
       console.error("Error during face detection:", error)
     }

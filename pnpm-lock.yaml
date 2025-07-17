@@ -17,6 +17,12 @@ importers:
       '@hookform/resolvers':
         specifier: ^3.9.1
         version: 3.10.0(react-hook-form@7.60.0(react@19.1.0))
+      '@mediapipe/camera_utils':
+        specifier: ^0.3.1675466862
+        version: 0.3.1675466862
+      '@mediapipe/face_detection':
+        specifier: ^0.4.1646425229
+        version: 0.4.1646425229
       '@neondatabase/serverless':
         specifier: ^1.0.1
         version: 1.0.1
@@ -575,6 +581,12 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@mediapipe/camera_utils@0.3.1675466862':
+    resolution: {integrity: sha512-siuXBoUxWo9WL0MeAxIxvxY04bvbtdNl7uCxoJxiAiRtNnCYrurr7Vl5VYQ94P7Sq0gVq6PxIDhWWeZ/pLnSzw==}
+
+  '@mediapipe/face_detection@0.4.1646425229':
+    resolution: {integrity: sha512-aeCN+fRAojv9ch3NXorP6r5tcGVLR3/gC1HmtqB0WEZBRXrdP6/3W/sGR0dHr1iT6ueiK95G9PVjbzFosf/hrg==}
 
   '@neondatabase/serverless@0.10.4':
     resolution: {integrity: sha512-2nZuh3VUO9voBauuh+IGYRhGU/MskWHt1IuZvHcJw6GLjDgtqj/KViKo7SIrLdGLdot7vFbiRRw+BgEy3wT9HA==}
@@ -3057,6 +3069,10 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.4
+
+  '@mediapipe/camera_utils@0.3.1675466862': {}
+
+  '@mediapipe/face_detection@0.4.1646425229': {}
 
   '@neondatabase/serverless@0.10.4':
     dependencies:

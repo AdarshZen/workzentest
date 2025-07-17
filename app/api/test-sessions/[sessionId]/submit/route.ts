@@ -169,34 +169,51 @@ export async function POST(
     if (existingSubmissionCheck?.rowCount && existingSubmissionCheck.rowCount > 0) {
       // If a submission already exists, just update it instead of creating a new one
       // This avoids the unique constraint violation
+      // Update existing test attempt
       await query(
         `UPDATE candidate_test_attempts
          SET score = $1, 
              status = $2, 
-             completed_at = $3, 
-             updated_at = CURRENT_TIMESTAMP
+             completed_at = $3
          WHERE candidate_id = $4 AND test_session_id = $5`,
         [percentageScore, attemptStatus, completedAt || new Date().toISOString(), candidate.id, sessionId]
       );
     } else {
       // No existing submission, create a new one with attempt_number = 1
+      // Get the next attempt number
+      const attemptNumberResult = await query(
+        `SELECT COALESCE(MAX(attempt_number), 0) + 1 as next_attempt 
+         FROM candidate_test_attempts 
+         WHERE candidate_id = $1 AND test_session_id = $2`,
+        [candidate.id, sessionId]
+      );
+      
+      const attempt_number = parseInt(attemptNumberResult.rows[0]?.next_attempt) || 1;
+      
       try {
         await query(
           `INSERT INTO candidate_test_attempts
            (candidate_id, test_session_id, score, status, started_at, completed_at, attempt_number)
-           VALUES ($1, $2, $3, $4, $5, $6, 1)`,
-          [candidate.id, sessionId, percentageScore, attemptStatus, startTime, completedAt || new Date().toISOString()]
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            candidate.id, 
+            sessionId, 
+            percentageScore, 
+            attemptStatus, 
+            startTime, 
+            completedAt || new Date().toISOString(),
+            attempt_number
+          ]
         );
       } catch (insertError) {
         console.error('Error inserting test attempt:', insertError);
         
-        // If insertion fails, try to update in case a record was created in the meantime
+        // If insertion fails, try to update the existing record
         await query(
           `UPDATE candidate_test_attempts
            SET score = $1, 
                status = $2, 
-               completed_at = $3, 
-               updated_at = CURRENT_TIMESTAMP
+               completed_at = $3
            WHERE candidate_id = $4 AND test_session_id = $5`,
           [percentageScore, attemptStatus, completedAt || new Date().toISOString(), candidate.id, sessionId]
         );
