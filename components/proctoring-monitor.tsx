@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Camera, Mic, MicOff, Eye, EyeOff, AlertTriangle, Users, Volume2, Shield, Activity } from "lucide-react"
-import { detectFaces, loadFaceDetectionModels } from "@/lib/face-detection"
+import { FaceDetector, createFaceDetector } from "@/lib/mediapipe-face-detection"
 
 interface ProctoringEvent {
   type: "FACE_NOT_DETECTED" | "MULTIPLE_FACES" | "VOICE_DETECTED" | "TAB_SWITCH" | "SUSPICIOUS_ACTIVITY"
@@ -105,37 +105,19 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
     }
   }, [isActive])
 
-  // Initialize face detection models when component mounts
+  // Initialize face detection when component mounts
   useEffect(() => {
-    if (isActive) {
-      // Load face detection models in the background
-      loadFaceDetectionModels().catch(error => {
-        console.error("Failed to load face detection models:", error)
-      })
-    }
-  }, [isActive])
-
-  // Real face detection - runs every 4 seconds
-  useEffect(() => {
-    if (!isActive || !cameraActive || !videoRef.current) return
-
-    const faceDetectionInterval = setInterval(async () => {
+    if (!isActive || !videoRef.current) return
+    
+    let faceDetector: FaceDetector | null = null;
+    
+    const onFaceDetection = (results: any) => {
       try {
-        if (!videoRef.current) return
+        const detections = results.detections || [];
+        const detectedFaces = detections.length;
         
-        // Use the actual face detection API
-        const detections = await detectFaces(videoRef.current)
-        
-        // If detection failed or returned null, use a fallback
-        if (!detections) {
-          setFaceDetected(true) // Assume face is present as fallback
-          setFaceCount(1)
-          return
-        }
-        
-        const detectedFaces = detections.length
-        setFaceCount(detectedFaces)
-        setFaceDetected(detectedFaces > 0)
+        setFaceCount(detectedFaces);
+        setFaceDetected(detectedFaces > 0);
 
         // Check for violations
         if (detectedFaces === 0) {
@@ -145,7 +127,7 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
             severity: "medium",
             description: "No face detected in camera feed",
           }
-          throttledOnViolation(event)
+          throttledOnViolation(event);
         } else if (detectedFaces > 1) {
           const event: ProctoringEvent = {
             type: "MULTIPLE_FACES",
@@ -161,10 +143,17 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
         setFaceDetected(true)
         setFaceCount(1)
       }
-    }, 4000)
+    };
 
-    return () => clearInterval(faceDetectionInterval)
-  }, [isActive, cameraActive])
+    // Initialize the face detector
+    faceDetector = createFaceDetector(onFaceDetection);
+    
+    return () => {
+      if (faceDetector) {
+        faceDetector.stop();
+      }
+    };
+  }, [isActive, throttledOnViolation])
 
   // Voice detection - runs every 2 seconds
   useEffect(() => {
