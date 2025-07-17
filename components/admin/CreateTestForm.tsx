@@ -244,10 +244,12 @@ export function CreateTestForm() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Question {questions.length + 1}</Label>
-                <Input
+                <Textarea
                   placeholder="Enter your question"
                   value={currentQuestion.question}
                   onChange={(e) => setCurrentQuestion({...currentQuestion, question: e.target.value})}
+                  rows={3}
+                  className="min-h-[100px]"
                 />
               </div>
               
