@@ -1151,7 +1151,7 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
 
               <CardContent className="p-8">
                 <div className="mb-8">
-                  <h3 className="text-lg font-medium text-gray-900 mb-6 leading-relaxed">
+                  <h3 className="text-lg font-medium text-gray-900 mb-6 leading-relaxed whitespace-pre-line">
                     {currentQuestion?.question_text}
                   </h3>
 
