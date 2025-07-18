@@ -32,6 +32,9 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
   const [faceCount, setFaceCount] = useState(1)
   const [voiceLevel, setVoiceLevel] = useState(0)
   const [recentViolations, setRecentViolations] = useState<ProctoringEvent[]>([])
+  const voiceStartTimeRef = useRef<number | null>(null)
+  const VOICE_MIN_DURATION = 1000 // Minimum voice duration in ms to trigger detection
+  const VOICE_THRESHOLD = 70 // Increased threshold to ignore keyboard/background noise
 
   // Throttled violation handler to prevent spam
   const throttledOnViolation = (event: ProctoringEvent) => {
@@ -155,7 +158,7 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
     };
   }, [isActive, throttledOnViolation])
 
-  // Voice detection - runs every 2 seconds
+  // Voice detection - runs every 200ms for better responsiveness
   useEffect(() => {
     if (!isActive || !microphoneActive || !analyserRef.current) return
 
@@ -166,22 +169,36 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
       const dataArray = new Uint8Array(analyser.frequencyBinCount)
       analyser.getByteFrequencyData(dataArray)
 
-      // Calculate average volume
-      const average = dataArray.reduce((sum, value) => sum + value, 0) / dataArray.length
+      // Calculate average volume (only for mid-range frequencies where human voice typically is)
+      const midRange = dataArray.slice(10, 50) // Focus on mid-range frequencies (human voice)
+      const average = midRange.reduce((sum, value) => sum + value, 0) / midRange.length
       setVoiceLevel(average)
 
-      // Voice detection threshold
-      if (average > 25) {
-        // Lowered threshold for better detection
-        const event: ProctoringEvent = {
-          type: "VOICE_DETECTED",
-          timestamp: new Date(),
-          severity: "medium",
-          description: `Voice activity detected (level: ${Math.round(average)})`,
+      const now = Date.now()
+      
+      // Check if we're above the noise threshold
+      if (average > VOICE_THRESHOLD) {
+        // If this is the first time we're detecting voice, note the start time
+        if (voiceStartTimeRef.current === null) {
+          voiceStartTimeRef.current = now
+        } else {
+          // Check if we've been hearing voice for the minimum duration
+          const voiceDuration = now - voiceStartTimeRef.current
+          if (voiceDuration >= VOICE_MIN_DURATION) {
+            const event: ProctoringEvent = {
+              type: "VOICE_DETECTED",
+              timestamp: new Date(),
+              severity: "medium",
+              description: `Voice activity detected (level: ${Math.round(average)})`,
+            }
+            throttledOnViolation(event)
+          }
         }
-        throttledOnViolation(event)
+      } else {
+        // Reset the timer if we drop below threshold
+        voiceStartTimeRef.current = null
       }
-    }, 2000)
+    }, 200) // Check more frequently (200ms) for better duration accuracy
 
     return () => clearInterval(voiceDetectionInterval)
   }, [isActive, microphoneActive])
