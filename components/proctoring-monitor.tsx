@@ -34,7 +34,7 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
   const [recentViolations, setRecentViolations] = useState<ProctoringEvent[]>([])
   const voiceStartTimeRef = useRef<number | null>(null)
   const VOICE_MIN_DURATION = 1000 // Minimum voice duration in ms to trigger detection
-  const VOICE_THRESHOLD = 70 // Increased threshold to ignore keyboard/background noise
+  const VOICE_THRESHOLD = 95 // Increased threshold to ignore keyboard/background noise
 
   // Throttled violation handler to prevent spam
   const throttledOnViolation = (event: ProctoringEvent) => {
