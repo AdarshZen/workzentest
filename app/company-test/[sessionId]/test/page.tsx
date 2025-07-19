@@ -273,18 +273,22 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
           
           // Add to violations
           if (!proctoringViolations.includes("tab_switch")) {
-            setProctoringViolations([...proctoringViolations, "tab_switch"]);
+            setProctoringViolations(prev => [...prev, "tab_switch"]);
           }
           
-          // If multiple warnings, close the test
+          // Auto-submit on 3rd tab switch
           if (newCount >= 3) {
+            if (!proctoringViolations.includes("excessive_tab_switching")) {
+              setProctoringViolations(prev => [...prev, "excessive_tab_switching"]);
+            }
+            // Auto-submit the test
             handleSubmitTest();
           }
           
           return newCount;
         });
       }
-    };
+    }
 
     if (testStarted) {
       document.addEventListener("contextmenu", disableRightClick)
@@ -741,9 +745,12 @@ export default function TestPage({ params }: { params: { sessionId: string } }) 
                   setProctoringViolations([...proctoringViolations, "human_audio_detected"]);
                 }
                 
-                // If multiple warnings, close the test
+                // Show warning but don't auto-submit
                 if (newCount >= 3) {
-                  handleSubmitTest();
+                  // Add a more severe violation but don't submit
+                  if (!proctoringViolations.includes("excessive_audio_detected")) {
+                    setProctoringViolations(prev => [...prev, "excessive_audio_detected"]);
+                  }
                 }
               }
               

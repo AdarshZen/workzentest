@@ -32,17 +32,20 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
   const [faceCount, setFaceCount] = useState(1)
   const [voiceLevel, setVoiceLevel] = useState(0)
   const [recentViolations, setRecentViolations] = useState<ProctoringEvent[]>([])
+  const [voiceDetectionCount, setVoiceDetectionCount] = useState(0)
+  const [showVoiceWarning, setShowVoiceWarning] = useState(false)
   const voiceStartTimeRef = useRef<number | null>(null)
   const VOICE_MIN_DURATION = 1000 // Minimum voice duration in ms to trigger detection
   const VOICE_THRESHOLD = 95 // Increased threshold to ignore keyboard/background noise
+  const MAX_VOICE_DETECTIONS = 3 // Maximum allowed voice detections before showing warning
 
   // Throttled violation handler to prevent spam
   const throttledOnViolation = (event: ProctoringEvent) => {
     const now = Date.now()
     const lastTime = lastViolationTimeRef.current[event.type] || 0
 
-    // Throttle violations by type (minimum 3 seconds between same type)
-    if (now - lastTime < 3000) return
+    // Don't throttle the final warning
+    if (event.severity !== 'high' && now - lastTime < 3000) return
 
     lastViolationTimeRef.current[event.type] = now
     onViolation(event)
@@ -184,14 +187,29 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
         } else {
           // Check if we've been hearing voice for the minimum duration
           const voiceDuration = now - voiceStartTimeRef.current
-          if (voiceDuration >= VOICE_MIN_DURATION) {
-            const event: ProctoringEvent = {
-              type: "VOICE_DETECTED",
-              timestamp: new Date(),
-              severity: "medium",
-              description: `Voice activity detected (level: ${Math.round(average)})`,
+          if (voiceDuration >= VOICE_MIN_DURATION && !showVoiceWarning) {
+            const newCount = voiceDetectionCount + 1
+            setVoiceDetectionCount(newCount)
+            
+            if (newCount >= MAX_VOICE_DETECTIONS) {
+              setShowVoiceWarning(true)
+              const event: ProctoringEvent = {
+                type: "SUSPICIOUS_ACTIVITY",
+                timestamp: new Date(),
+                severity: "high",
+                description: "Your test has been flagged for excessive voice activity. Please continue your test, but note that this incident has been recorded.",
+              }
+              // Don't call onViolation again as it might trigger auto-submit
+              setRecentViolations(prev => [...prev.slice(-2), event])
+            } else {
+              const event: ProctoringEvent = {
+                type: "VOICE_DETECTED",
+                timestamp: new Date(),
+                severity: "medium",
+                description: `Voice activity detected (${newCount}/${MAX_VOICE_DETECTIONS} warnings)`,
+              }
+              throttledOnViolation(event)
             }
-            throttledOnViolation(event)
           }
         }
       } else {
@@ -253,6 +271,16 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="relative bg-gray-900 rounded-lg overflow-hidden">
+            {showVoiceWarning && (
+              <div className="absolute inset-0 bg-red-900/80 flex items-center justify-center z-10 p-4">
+                <div className="text-center text-white">
+                  <AlertTriangle className="w-12 h-12 mx-auto mb-2" />
+                  <h3 className="text-xl font-bold mb-2">Test Flagged</h3>
+                  <p>Your test has been flagged for excessive voice activity.</p>
+                  <p className="text-sm opacity-80 mt-2">Please continue your test. This incident has been recorded.</p>
+                </div>
+              </div>
+            )}
             <video ref={videoRef} autoPlay muted playsInline className="w-full h-48 object-cover" />
 
             {/* Status Overlay */}
@@ -286,7 +314,7 @@ export function ProctoringMonitor({ onViolation, isActive }: ProctoringMonitorPr
                   <Mic className="w-4 h-4 text-white" />
                   <div className="w-16 h-2 bg-gray-600 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-green-400 transition-all duration-300"
+                      className={`h-full transition-all duration-300 ${showVoiceWarning ? 'bg-red-500' : voiceDetectionCount >= 2 ? 'bg-yellow-400' : 'bg-green-400'}`}
                       style={{ width: `${Math.min(voiceLevel * 3, 100)}%` }}
                     />
                   </div>
