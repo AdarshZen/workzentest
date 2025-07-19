@@ -154,7 +154,7 @@ export default function CompanyTestStartPage({ params }: { params: { sessionId: 
   }, [])
 
   // Handle proctoring violations
-  const handleProctoringViolation = (event: any) => {
+  const handleProctoringViolation = async (event: any) => {
     if (submittedRef.current) return
 
     if (event.type === "FACE_NOT_DETECTED") {
@@ -167,46 +167,87 @@ export default function CompanyTestStartPage({ params }: { params: { sessionId: 
       const newCount = prev + 1
       violationCountRef.current = newCount
 
-      if (event.severity === "high" && newCount >= 5) {
-        setTimeout(() => {
+      if ((event.severity === "high" && newCount >= 5) || event.type === "MULTIPLE_FACES") {
+        setTimeout(async () => {
           if (!submittedRef.current) {
-            alert("Assessment terminated due to multiple security violations.")
             submittedRef.current = true
-            handleSubmit()
+            try {
+              // Call auto-submit endpoint with violation details
+              const response = await fetch(`/api/company-test/${params.sessionId}/auto-submit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  email,
+                  answers: Object.entries(answers).map(([questionId, answer]) => ({
+                    questionId,
+                    ...(typeof answer === 'object' ? answer : { answer })
+                  })),
+                  violations: [event.type],
+                  isAutoSubmit: true
+                })
+              });
+
+              if (response.ok) {
+                alert("Assessment submitted due to security policy violation.");
+                router.push(`/company-test/${params.sessionId}/thank-you?email=${encodeURIComponent(email || '')}`);
+              } else {
+                throw new Error('Failed to submit assessment');
+              }
+            } catch (error) {
+              console.error('Error during auto-submission:', error);
+              alert("Error submitting assessment. Please contact support.");
+              submittedRef.current = false; // Allow retry
+            }
           }
-        }, 100)
+        }, 100);
       }
 
-      return newCount
-    })
+      return newCount;
+    });
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (isAutoSubmit = false) => {
     if (submittedRef.current) return
-
+    
+    submittedRef.current = true
     setIsSubmitting(true)
 
     try {
-      const response = await fetch(`/api/company-test/${params.sessionId}/submit`, {
+      const endpoint = isAutoSubmit 
+        ? `/api/company-test/${params.sessionId}/auto-submit`
+        : `/api/company-test/${params.sessionId}/submit`
+
+      const requestBody = {
+        candidateEmail: email,
+        answers: Object.entries(answers).map(([questionId, answer]) => ({
+          questionId,
+          ...(typeof answer === 'object' ? answer : { answer })
+        })),
+        timeSpent: testSession ? testSession.duration_minutes * 60 - timeLeft : 0,
+        proctoringData: {
+          tabSwitches: tabSwitchWarnings,
+          totalViolations: violationCountRef.current,
+          faceDetectionFailures,
+          voiceDetections,
+        },
+        ...(isAutoSubmit ? { isAutoSubmit: true } : {})
+      }
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          candidateEmail: email,
-          answers,
-          timeSpent: testSession ? testSession.duration_minutes * 60 - timeLeft : 0,
-          proctoringData: {
-            tabSwitches: tabSwitchWarnings,
-            totalViolations: violationCountRef.current,
-            faceDetectionFailures,
-            voiceDetections,
-          },
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (response.ok) {
+        const result = await response.json()
+        if (isAutoSubmit) {
+          alert("Your test has been submitted due to a policy violation.")
+        }
         router.push(`/company-test/${params.sessionId}/thank-you?email=${encodeURIComponent(email || "")}`)
       } else {
-        throw new Error("Submission failed")
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || "Submission failed")
       }
     } catch (error) {
       console.error("Submission error:", error)
