@@ -1,22 +1,23 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Mail, Phone, User, Search, ArrowLeft, Loader2, Send, Filter, X } from 'lucide-react'
+import { Mail, Phone, User, Search, ArrowLeft, Loader2, Send, Filter, X, Trash2, Download, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
 import { ImportCandidates } from '@/components/admin/ImportCandidates'
+import { exportToCsv } from '@/lib/export-utils'
 
 interface Candidate {
   id: string
   name: string
   email: string
   phone: string
-  status: 'invited' | 'started' | 'completed' | 'expired'
+  status: 'registered' | 'not_started' | 'started' | 'completed' | 'expired'
   last_activity: string
   score?: {
     correct: number
@@ -32,7 +33,7 @@ interface Candidate {
 export default function TestSessionCandidatesPage() {
   const params = useParams()
   const router = useRouter()
-  const sessionId = params.sessionId as string
+  const sessionId = Array.isArray(params.sessionId) ? params.sessionId[0] : params.sessionId || ''
   
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -40,19 +41,19 @@ export default function TestSessionCandidatesPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [scoreFilter, setScoreFilter] = useState<string>('all')
   const [showFilters, setShowFilters] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [candidateToDelete, setCandidateToDelete] = useState<{id: string, name: string} | null>(null)
   const [testSession, setTestSession] = useState<{
     id: string
     test_name: string
-    company_name: string
-    status: 'draft' | 'active' | 'completed'
+    company_name?: string
+    status: string
+    created_at: string
+    updated_at: string
   } | null>(null)
 
-  useEffect(() => {
-    fetchTestSession()
-    fetchCandidates()
-  }, [sessionId])
-
-  const fetchTestSession = async () => {
+  const fetchTestSession = useCallback(async () => {
     try {
       const response = await fetch(`/api/admin/test-sessions/${sessionId}`)
       if (response.ok) {
@@ -62,21 +63,38 @@ export default function TestSessionCandidatesPage() {
     } catch (error) {
       console.error('Failed to fetch test session:', error)
     }
-  }
+  }, [sessionId])
 
-  const fetchCandidates = async () => {
+  const fetchCandidates = useCallback(async () => {
+    setIsLoading(true)
     try {
       const response = await fetch(`/api/admin/test-sessions/${sessionId}/candidates`)
-      if (response.ok) {
-        const data = await response.json()
-        setCandidates(data)
+      if (!response.ok) {
+        throw new Error('Failed to fetch candidates')
       }
+      const data = await response.json()
+      console.log('Fetched candidates:', data) // Debug log
+      setCandidates(Array.isArray(data) ? data : [])
     } catch (error) {
-      console.error('Failed to fetch candidates:', error)
+      console.error('Error fetching candidates:', error)
+      setCandidates([])
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [sessionId])
+
+  useEffect(() => {
+    fetchTestSession()
+    fetchCandidates()
+  }, [fetchTestSession, fetchCandidates])
+
+  const handleRefresh = useCallback(() => {
+    fetchCandidates()
+  }, [fetchCandidates])
+
+  useEffect(() => {
+    fetchCandidates()
+  }, [sessionId])
 
   const handleInvite = async (candidateId: string) => {
     try {
@@ -105,6 +123,39 @@ export default function TestSessionCandidatesPage() {
       }
     } catch (error) {
       console.error('Failed to send invitations:', error)
+    }
+  }
+
+  const handleDeleteClick = (candidate: Candidate) => {
+    setCandidateToDelete({ id: candidate.id, name: candidate.name })
+    setShowDeleteDialog(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!candidateToDelete) return
+    
+    setDeletingId(candidateToDelete.id)
+    try {
+      const response = await fetch(
+        `/api/admin/test-sessions/${sessionId}/candidates/${candidateToDelete.id}`,
+        { method: 'DELETE' }
+      )
+      
+      if (response.ok) {
+        // Remove the deleted candidate from the list
+        setCandidates(candidates.filter(c => c.id !== candidateToDelete.id))
+      } else {
+        const error = await response.json()
+        console.error('Failed to delete candidate:', error)
+        alert(error.error || 'Failed to delete candidate')
+      }
+    } catch (error) {
+      console.error('Error deleting candidate:', error)
+      alert('An error occurred while deleting the candidate')
+    } finally {
+      setDeletingId(null)
+      setShowDeleteDialog(false)
+      setCandidateToDelete(null)
     }
   }
 
@@ -145,6 +196,35 @@ export default function TestSessionCandidatesPage() {
     const { label, variant } = statusMap[status] || { label: status, variant: 'outline' }
     return <Badge variant={variant}>{label}</Badge>
   }
+
+  const handleExportCsv = () => {
+    if (filteredCandidates.length === 0) {
+      alert('No candidates to export')
+      return
+    }
+
+    // Format data for export
+    const exportData = filteredCandidates.map(candidate => ({
+      'Name': candidate.name,
+      'Email': candidate.email,
+      'Phone': candidate.phone || '',
+      'Status': candidate.status,
+      'Last Activity': candidate.last_activity ? new Date(candidate.last_activity).toLocaleString() : 'Never',
+      'Score': candidate.score ? `${candidate.score.percentage}% (${candidate.score.correct}/${candidate.score.total})` : 'N/A',
+      'Start Time': candidate.start_time ? new Date(candidate.start_time).toLocaleString() : 'Not Started',
+      'End Time': candidate.end_time ? new Date(candidate.end_time).toLocaleString() : 'Not Completed'
+    }))
+
+    // Generate filename with test session name and date
+    const testName = testSession?.test_name?.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'test_session'
+    const dateStr = new Date().toISOString().split('T')[0]
+    const filename = `candidates_${testName}_${dateStr}`
+
+    // Export to CSV
+    exportToCsv(exportData, filename)
+  }
+
+
 
   if (isLoading) {
     return (
@@ -191,10 +271,35 @@ export default function TestSessionCandidatesPage() {
                 </span>
               )}
             </Button>
-            <ImportCandidates 
-              testSessionId={sessionId} 
-              onImportComplete={fetchCandidates} 
-            />
+            <div className="flex items-center gap-2">
+              <ImportCandidates 
+                testSessionId={sessionId} 
+                onImportComplete={fetchCandidates} 
+              />
+              <Button 
+                variant="outline" 
+                onClick={handleExportCsv}
+                className="gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleRefresh} 
+                disabled={isLoading}
+                className="gap-2"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh
+                  </>
+                )}
+              </Button>
+            </div>
             <Button onClick={handleInviteAll}>
               <Send className="mr-2 h-4 w-4" />
               Invite All
@@ -325,14 +430,29 @@ export default function TestSessionCandidatesPage() {
                             ? '0%' 
                             : '-'}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {candidate.status === 'invited' && (
+                      <TableCell className="text-right space-x-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                          onClick={() => handleDeleteClick(candidate)}
+                          disabled={deletingId === candidate.id}
+                        >
+                          {deletingId === candidate.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                          <span className="sr-only">Delete</span>
+                        </Button>
+                        {(candidate.status === 'registered' || candidate.status === 'not_started') && (
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleInvite(candidate.id)}
+                            className="ml-2"
                           >
-                            Resend Invite
+                            Send Invite
                           </Button>
                         )}
                       </TableCell>
@@ -350,6 +470,37 @@ export default function TestSessionCandidatesPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteDialog && candidateToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-2">Delete Candidate</h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete {candidateToDelete.name}? This action cannot be undone.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteDialog(false)
+                  setCandidateToDelete(null)
+                }}
+                disabled={!!deletingId}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDelete}
+                disabled={!!deletingId}
+              >
+                {deletingId ? 'Deleting...' : 'Delete'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
