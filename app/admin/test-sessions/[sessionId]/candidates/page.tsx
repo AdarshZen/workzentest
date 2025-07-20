@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Mail, Phone, User, Search, ArrowLeft, Loader2, Send } from 'lucide-react'
+import { Mail, Phone, User, Search, ArrowLeft, Loader2, Send, Filter, X } from 'lucide-react'
 import Link from 'next/link'
 import { ImportCandidates } from '@/components/admin/ImportCandidates'
 
@@ -18,7 +18,15 @@ interface Candidate {
   phone: string
   status: 'invited' | 'started' | 'completed' | 'expired'
   last_activity: string
-  score?: number
+  score?: {
+    correct: number
+    total: number
+    percentage: number
+  }
+  start_time?: string
+  end_time?: string
+  created_at: string
+  updated_at: string
 }
 
 export default function TestSessionCandidatesPage() {
@@ -29,6 +37,9 @@ export default function TestSessionCandidatesPage() {
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [scoreFilter, setScoreFilter] = useState<string>('all')
+  const [showFilters, setShowFilters] = useState(false)
   const [testSession, setTestSession] = useState<{
     id: string
     test_name: string
@@ -97,14 +108,35 @@ export default function TestSessionCandidatesPage() {
     }
   }
 
-  const filteredCandidates = candidates.filter(candidate => 
-    candidate.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    candidate.email.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredCandidates = candidates.filter(candidate => {
+    // Text search filter
+    const matchesSearch = searchQuery === '' || 
+      candidate.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      candidate.email.toLowerCase().includes(searchQuery.toLowerCase())
+
+    // Status filter
+    const matchesStatus = statusFilter === 'all' || candidate.status === statusFilter
+
+    // Score filter
+    let matchesScore = true
+    if (scoreFilter !== 'all') {
+      const score = candidate.score?.percentage || 0
+      switch(scoreFilter) {
+        case 'excellent': matchesScore = score >= 90; break
+        case 'good': matchesScore = score >= 70 && score < 90; break
+        case 'average': matchesScore = score >= 50 && score < 70; break
+        case 'poor': matchesScore = score < 50; break
+        case 'no-score': matchesScore = candidate.score === undefined; break
+      }
+    }
+
+    return matchesSearch && matchesStatus && matchesScore
+  })
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-      invited: { label: 'Invited', variant: 'outline' },
+      registered: { label: 'Registered', variant: 'outline' },
+      not_started: { label: 'Not Started', variant: 'outline' },
       started: { label: 'In Progress', variant: 'secondary' },
       completed: { label: 'Completed', variant: 'default' },
       expired: { label: 'Expired', variant: 'destructive' },
@@ -145,6 +177,20 @@ export default function TestSessionCandidatesPage() {
           </div>
           
           <div className="flex flex-col sm:flex-row gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowFilters(!showFilters)}
+              className="gap-2"
+            >
+              <Filter className="h-4 w-4" />
+              Filters
+              {(statusFilter !== 'all' || scoreFilter !== 'all') && (
+                <span className="ml-1 h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">
+                  {(statusFilter !== 'all' ? 1 : 0) + (scoreFilter !== 'all' ? 1 : 0)}
+                </span>
+              )}
+            </Button>
             <ImportCandidates 
               testSessionId={sessionId} 
               onImportComplete={fetchCandidates} 
@@ -155,6 +201,57 @@ export default function TestSessionCandidatesPage() {
             </Button>
           </div>
         </div>
+
+        {/* Filters */}
+        {showFilters && (
+          <div className="bg-muted/50 p-4 rounded-lg mt-4 border">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1">
+                <label className="text-sm font-medium mb-1 block">Status</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full p-2 border rounded-md bg-white"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="registered">Registered</option>
+                  <option value="not_started">Not Started</option>
+                  <option value="started">In Progress</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="text-sm font-medium mb-1 block">Score</label>
+                <select
+                  value={scoreFilter}
+                  onChange={(e) => setScoreFilter(e.target.value)}
+                  className="w-full p-2 border rounded-md bg-white"
+                >
+                  <option value="all">All Scores</option>
+                  <option value="excellent">Excellent (90-100%)</option>
+                  <option value="good">Good (70-89%)</option>
+                  <option value="average">Average (50-69%)</option>
+                  <option value="poor">Needs Improvement (0-49%)</option>
+                  <option value="no-score">No Score</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    setStatusFilter('all')
+                    setScoreFilter('all')
+                  }}
+                  className="h-10"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Reset Filters
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <Card>
@@ -217,10 +314,16 @@ export default function TestSessionCandidatesPage() {
                       </TableCell>
                       <TableCell>{getStatusBadge(candidate.status)}</TableCell>
                       <TableCell>
-                        {new Date(candidate.last_activity).toLocaleString()}
+                        {candidate.last_activity 
+                          ? new Date(candidate.last_activity).toLocaleString() 
+                          : 'Never'}
                       </TableCell>
                       <TableCell className="text-right">
-                        {candidate.score !== undefined ? `${candidate.score}%` : '-'}
+                        {candidate.score?.percentage !== undefined 
+                          ? `${Math.round(candidate.score.percentage)}%` 
+                          : candidate.status === 'completed' 
+                            ? '0%' 
+                            : '-'}
                       </TableCell>
                       <TableCell className="text-right">
                         {candidate.status === 'invited' && (
